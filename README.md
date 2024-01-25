@@ -43,5 +43,5 @@ Contributions to this project are welcome! To contribute:
 
 ---
 
-Thank you for your interest in the Decentralised Marketplace project! For questions or suggestions, reach out to us or open an issue on [GitHub](https://github.com/Ikpong-Joseph/RiseIn-SolanaBootcamp-FinalProject). Happy reviewing! 🚀
+Thank you for your interest in the Decentralised Marketplace project! For questions or suggestions, reach out to us or open an issue on [GitHub](https://github.com/Ikpong-Joseph/Decentralised-Marketplace). Happy reviewing! 🚀
 
