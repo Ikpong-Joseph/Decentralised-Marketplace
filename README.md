@@ -9,6 +9,7 @@ Welcome to the **Decentralised Marketplace** project repository! This decentrali
 - [Features](#features)
 - [Smart Contracts](#smart-contracts)
 - [Contributing](#contributing)
+- [Usage](#usage)
 
 
 ## Overview
@@ -41,6 +42,11 @@ Contributions to this project are welcome! To contribute:
 4. Commit with clear and concise messages.
 5. Push changes to your fork.
 6. Submit a pull request describing your changes.
+
+
+## Usage
+
+Open this smart contract in [Remix](https://remix.ethereum.org/#lang=en&optimize=false&runs=200&evmVersion=null&version=soljson-v0.8.18+commit.87f61d96.js), deploy to a testnet or the Remix VM and have fun interacting.
 
 ---
 
