@@ -18,11 +18,12 @@ The **Decentralised Marketplace** Solidity smart contract provides an intuitive 
 
 ## Features
 
-- Owner and market authorities can add other market authorities.
+- Owner and market authorities can add other market authorities
 - Market authorities can verify Sellers
-- Sellers can add & update their items
-- Buyers can retrieve seller and item information.
-- Transactions possibility.
+- Sellers can add & delete their listed items
+- Sellers can view and withdraw sales balances from contract
+- Buyers can retrieve seller and item information
+- Contract returns excess value sent by buyres during purchase
 
 
 ## Smart Contracts
