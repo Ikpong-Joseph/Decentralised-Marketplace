@@ -2,12 +2,16 @@
 
 pragma solidity ^0.8.18;
 
+
 contract Decentralized_Market {
 
+    /****************** DATA ****************/
+
     address public marketAuthority;
-    address[] public marketAuthorities;
-    // Address[] public sellers;
-    uint256 public sellerCounter = 0;
+    //address[] public marketAuthorities;
+    address[] sellersToBeVerified;
+    uint256 sellerCounter = 1;
+   
 
     struct Item {
         string itemName;
@@ -20,7 +24,9 @@ contract Decentralized_Market {
 
     Item[] items;
 
-    // Events
+
+   /****************** EVENTS ****************/
+
     event SellerAddressSubmitted(address indexed sellerAddress);
     event SellerVerified(address indexed sellerAddress, uint sellerID);
     event ItemAdded(address indexed Seller, uint sellerID, Item);
@@ -30,172 +36,259 @@ contract Decentralized_Market {
     event FormerMarketAuthorityDeleted(address indexed formerMarketAuthority);
     event ItemPurchased(address indexed Buyer, string itemName, uint sellerID, uint itemPrice);
 
-    // Mappings
-    mapping(address => bool) sellers; // mapping to check if an address is a seller. Initialize: sellers(address/msg.sender)=true;
+
+    /****************** MAPPINGSS ****************/
+
+    mapping(address sellerAddress => bool) sellers; // mapping to check if an address is a seller. Initialize: sellers(address/msg.sender)=true;
     mapping(address seller => Item) itemOwner;
-    mapping(string itemName => Item) public findItem; // Callable by users
+    mapping(string itemName => Item[]) findItem;
     mapping(uint sellerId => mapping (string itemName => Item)) public sellersItem; // Used by buyers to confirm Items by seller. Calla ble by Users. Can be used to find item price or qty left.
-    mapping (address => uint sellerID) hasSellerID;
+    mapping (address sellerAddress => uint sellerID) public hasSellerID;
+    mapping(address marketAuthority => bool) public marketAuthorities;
+    mapping(address => uint256) sellersBalances;
+
+
 
 
     constructor(){
         marketAuthority = msg.sender;
+        marketAuthorities[msg.sender] = true;
     }
 
 
-    // Modifiers
-    modifier onlyMarketAuthority{
-        for (uint i = 0; i < marketAuthorities.length; i++) {
-            if (marketAuthorities[i] == msg.sender) {
-                // Authority found, proceed with function logic
-                _;
-                return; // Exit the modifier after successful check
-            }
-        }
-        require(false, "You must be a market authority to call this."); // Revert if not found
+    /******************************************** MODIFIERS *****************************************/
 
+   
+    modifier onlyMarketAuthority {
+        require(marketAuthorities[msg.sender], "You must be a market authority to call this.");
+        _;
     }
 
     modifier onlySeller {
-        require(hasSellerID[msg.sender] != 0, "Only verified sellers allowed to call this"); // OR Iterate through sellers[]
+        require(hasSellerID[msg.sender] != 0, "Only verified sellers allowed to call this");
         _;
     }
 
 
-    // Functions
+    /**************************************** FUNCTIONS ************************************************/
+
+
     function transferMarketAuthority(address _newMarketAuthorityAddress) public onlyMarketAuthority {
         marketAuthority = _newMarketAuthorityAddress;
-        marketAuthorities.push(_newMarketAuthorityAddress);
+       marketAuthorities[_newMarketAuthorityAddress] = true;
         emit MarketAuthorityTransferred(msg.sender, _newMarketAuthorityAddress);
-
-        uint256 authorityIndex = marketAuthorities.length; // Start from the end
-        for (uint256 i = 0; i < authorityIndex; i++) {
-            if (marketAuthorities[i] == msg.sender) {
-                authorityIndex = i;
-                break; // Found the index, exit the loop
-            }
-        }
-
         // Delete the authority at the found index
-        delete marketAuthorities[authorityIndex];
+        delete marketAuthorities[msg.sender];
         emit FormerMarketAuthorityDeleted(msg.sender);
     }
 
     function addNewMarketAuthority(address _newMarketAuthorityAddress) public onlyMarketAuthority {
-        marketAuthorities.push(_newMarketAuthorityAddress);
+        marketAuthorities[_newMarketAuthorityAddress] = true;
         emit NewMarketAuthorityAdded(msg.sender, _newMarketAuthorityAddress);
     }
+    
+    function getItemsByName(string memory _itemName) public view returns (Item[] memory) {
+        uint256 itemCount = 0;
 
-    function addItem(string memory itemName, uint itemPrice, string memory itemDescription, uint itemQuantity, uint sellerID, address payable sellerAddress) public onlySeller{
-        Item memory item = Item(itemName, itemPrice, itemDescription, itemQuantity, sellerID, sellerAddress);
+        // Count the number of matching items
+        for (uint256 i = 0; i < items.length; i++) {
+            if (keccak256(abi.encodePacked(items[i].itemName)) == keccak256(abi.encodePacked(_itemName))) {
+                itemCount++;
+            }
+        }
+
+        // Create an array to store the matching items
+        Item[] memory matchingItems = new Item[](itemCount);
+        itemCount = 0;
+
+        // Populate the array with matching items
+        for (uint256 i = 0; i < items.length; i++) {
+            if (keccak256(abi.encodePacked(items[i].itemName)) == keccak256(abi.encodePacked(_itemName))) {
+                matchingItems[itemCount] = items[i];
+                itemCount++;
+            }
+        }
+
+        return matchingItems;
+    }
+
+    function addItem(string memory itemName, uint itemPrice, string memory itemDescription, uint itemQuantity, uint sellerID) public onlySeller{
+        // Seller sets price in wei
+        // Convert item price to Wei (ETH standard: 1e18)
+        uint itemPriceInETH = itemPrice * 1e18; // Converts seller's itemPrice to ETH. Buyers sets denomination to ETH. Doesn't collect 0.xxxx.
+        
+        Item memory item = Item(itemName, itemPriceInETH, itemDescription, itemQuantity, sellerID, payable(msg.sender));
+        require(bytes(sellersItem[sellerID][itemName].itemName).length == 0 , "Item name already exists.");
+        require(hasSellerID[msg.sender] == sellerID, "Seller ID doesn't match.");
         items.push(item);
-
-        itemOwner[sellerAddress] = item;
-        findItem[itemName] = item;
+        itemOwner[payable(msg.sender)] = item;
+        // findItem[itemName] = items;
         sellersItem[sellerID][itemName] = item;
 
         emit ItemAdded(msg.sender, sellerID, item);
         
     }
 
+    // Function to get all items listed by sellers
+    function getAllItems() public view returns (Item[] memory) {
+        uint256 itemCount = 0;
+
+        // Count the total number of items listed by sellers
+        for (uint256 i = 0; i < items.length; i++) {
+            if (hasSellerID[items[i].sellerAddress] != 0 &&
+            sellersItem[items[i].sellerID][items[i].itemName].itemQuantity > 0) {
+                itemCount++;
+            }
+        }
+
+        // Create an array to store all items listed by sellers
+        Item[] memory allItems = new Item[](itemCount);
+        itemCount = 0;
+
+        // Populate the array with items listed by sellers
+        for (uint256 i = 0; i < items.length; i++) {
+            if (hasSellerID[items[i].sellerAddress] != 0 &&
+            sellersItem[items[i].sellerID][items[i].itemName].itemQuantity > 0) {
+                allItems[itemCount] = items[i];
+                itemCount++;
+            }
+        }
+
+        return allItems;
+    }
+
     function deleteItem(uint sellerID, string memory itemName) public onlySeller {
         require(sellersItem[sellerID][itemName].sellerAddress != address(0), "Item not found."); // Check for valid owner
+        require(hasSellerID[msg.sender] == sellerID, "Seller ID doesn't match.");
 
-        /* sellersItem[sellerID][itemName].sellerAddress != address(0) verifies that the Item struct exists 
-        and has a valid owner (not the zero address), indicating that the item is present and eligible for deletion.
-        */
+         // Find the index of the item
+        uint256 indexToDelete = findItemIndex(sellerID, itemName);
 
-        // Additional checks (optional)
-        // - Check for pending purchases or other restrictions
+        // Ensure the item exists in the array
+        require(indexToDelete < items.length, "Item not found");
 
-        // Delete the item
+        // Swap the item to be deleted with the last item in the array
+        items[indexToDelete] = items[items.length - 1];
+
+        // Reduce the array's length by 1
+        items.pop();
         delete sellersItem[sellerID][itemName];
 
         // Emit an event for tracking
         emit ItemDeleted(sellerID, itemName);
     }
 
+    function findItemIndex(uint256 sellerId, string memory itemName) internal view returns (uint256) {
+        for (uint256 i = 0; i < items.length; i++) {
+            if (items[i].sellerID == sellerId && keccak256(abi.encodePacked(items[i].itemName)) == keccak256(abi.encodePacked(itemName))) {
+                return i;
+            }
+        }
+        // Return a value indicating that the item was not found
+        return type(uint256).max;
+    }
+
     // Function for wannabe sellers to submit their addresses
     function submitSellerAddress() public {
         require(!sellers[msg.sender], "Address already submitted");
         sellers[msg.sender] = true;
+        sellersToBeVerified.push(msg.sender);
         emit SellerAddressSubmitted(msg.sender);
     }
 
-    function generateSellerID() private returns (uint) {
-        // Choose your preferred method:
-
-        // 1. Incrementing Counter:
-        uint sellerId = sellerCounter++;
-
-        // 2. Using Timestamp and Counter:
-        // uint sellerId = uint(block.timestamp) + sellerCounter++;
-
-        // 3. Hashing Address and Timestamp:
-        // uint sellerId = uint(keccak256(abi.encodePacked(msg.sender, block.timestamp)));
-
-        // 4. External Oracle (e.g., Chainlink VRF):
-        // // ... code to request a random value from Chainlink VRF ...
-        // uint sellerId = ...;
-
-        return sellerId;
+    // Function for market authorities to get addresses pending verification
+    function getAddressesPendingVerification() public view onlyMarketAuthority returns (address[] memory) {
+        return sellersToBeVerified;
     }
 
     // Function for marketAuthorities to verify addresses and assign sellerIDs
     function verifySellerAddress(address payable sellerAddress) public onlyMarketAuthority {
         require(sellers[sellerAddress], "Address not submitted");
         require(hasSellerID[sellerAddress] == 0, "Seller already has an ID");
-        uint sellerID = generateSellerID(); // Implement your ID generation logic here
+        uint sellerID = sellerCounter++;
+        sellers[msg.sender] = false;
         hasSellerID[sellerAddress] = sellerID;
+
+        // Find the index of the seller in the sellersToBeVerified array
+        uint256 indexToRemove;
+        for (uint256 i = 0; i < sellersToBeVerified.length; i++) {
+            if (sellersToBeVerified[i] == sellerAddress) {
+                indexToRemove = i;
+                break;
+            }
+        }
+
+        // Ensure the seller is in the pending verification array
+        require(indexToRemove < sellersToBeVerified.length, "Seller not found in pending verification");
+
+        // Swap the element to be removed with the last element
+        sellersToBeVerified[indexToRemove] = sellersToBeVerified[sellersToBeVerified.length - 1];
+
+        // Reduce the array's length by 1
+        sellersToBeVerified.pop();
+
         emit SellerVerified(sellerAddress, sellerID);
     }
 
-    function getSellerID(address payable sellerAddress) public view onlySeller returns(uint){
-        return hasSellerID[sellerAddress];
-    }
-
     function buyItem(string memory itemName, uint sellerID) public payable {
+        
         // 1. Validate item existence and seller:
         require(sellersItem[sellerID][itemName].sellerAddress != address(0), "Item not found or invalid seller.");
 
-        // 2. Ensure sufficient funds from buyer:
-        require(msg.value >= sellersItem[sellerID][itemName].itemPrice, "Insufficient funds to purchase item.");
+       // 2. Ensure sufficient funds from buyer:
+        uint requiredAmount = sellersItem[sellerID][itemName].itemPrice;
+        require(msg.value >= requiredAmount, "Please send enough amount required to purchase the item. Search sellersItem with item name and seller ID to verify price.");
 
         // 3. Check item availability:
         require(sellersItem[sellerID][itemName].itemQuantity > 0, "Item out of stock.");
 
-        // 4. Transfer funds to seller:
-        sellersItem[sellerID][itemName].sellerAddress.transfer(sellersItem[sellerID][itemName].itemPrice);
+        // 4. Update seller's balance:
+        sellersBalances[sellersItem[sellerID][itemName].sellerAddress] += sellersItem[sellerID][itemName].itemPrice;
 
         // 5. Update item quantity:
         sellersItem[sellerID][itemName].itemQuantity--;
 
-        // 6. Emit purchase event:
+        // 6. Return excess funds to the buyer:
+        if (msg.value > requiredAmount) {
+            uint excessAmount = msg.value - requiredAmount;
+            (bool success, ) = msg.sender.call{value: excessAmount}("");
+            require(success, "Failed to return excess funds to the buyer");
+        }
+
+        // 7. Emit purchase event:
         emit ItemPurchased(msg.sender, itemName, sellerID, sellersItem[sellerID][itemName].itemPrice);
 
-        // 7. (Optional) Initiate escrow or delivery process:
-        /* - If using escrow, create an escrow contract instance and transfer funds
-        if (usingEscrow) {
-            DecentralizedMarketEscrow escrow = new DecentralizedMarketEscrow(msg.sender, sellersItem[sellerID][itemName].sellerAddress);
-            escrow.deposit{value: sellersItem[sellerID][itemName].itemPrice}(); // Transfer funds to escrow
-
-            // Store escrow address for later tracking and resolution
-            sellersItem[sellerID][itemName].escrowAddress = address(escrow);
-        } else {
-            // Direct transfer to seller (no escrow)
-            sellersItem[sellerID][itemName].sellerAddress.transfer(sellersItem[sellerID][itemName].itemPrice);
-        }
-        */
-        
-        // - If physical delivery, initiate shipping or delivery mechanisms
     }
 
+    function getSellerBalance() public view onlySeller returns(uint) {
+        return sellersBalances[msg.sender];
+    /* 
+    Had to add this in instead of viewing straight from the sellersBalances mapping
+    so I could add the onlySeller restriction
+    */
+    }
 
+    function withdrawBalance() public payable onlySeller {
+        uint256 balance = sellersBalances[msg.sender];
+        require(balance > 0, "No balance to withdraw");
+
+        // Transfer funds to seller
+        (bool success, ) = msg.sender.call{value: balance}("");
+        require(success, "Withdrawal failed");
+
+        // Reset seller's balance
+        sellersBalances[msg.sender] = 0;
+    }
+
+    // Inside the Decentralized_Market contract (FOR TEST)
+
+    function getItemByIndex(uint index) external view returns (Item memory) {
+        require(index < items.length, "Index out of bounds");
+        return items[index];
+    }
 
 }
 
-
-
-
-
-
+/*
+CHAINLINK ETH/USD ADDRESS ----   0x694AA1769357215DE4FAC081bf1f309aDC325306
+*/
