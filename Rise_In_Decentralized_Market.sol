@@ -2,16 +2,30 @@
 
 pragma solidity ^0.8.18;
 
+/************************************ ERRORS ***********************************************/
+
+error Not_Market_Authority();
+error Not_Seller();
+error Item_Already_Exist();
+error Invalid_SellerID();
+error Invalid_Item();
+error Seller_Address_Already_Submitted();
+error Seller_Address_Not_Submitted();
+error Seller_Has_ID();
+error Insufficient_Amount();
+error Out_Of_Stock();
+error No_balance_to_withdraw();
+
 
 contract Decentralized_Market {
-
-    /****************** DATA ****************/
+    
+    /************************************ DATA ***********************************************/
 
     address public marketAuthority;
     //address[] public marketAuthorities;
     address[] sellersToBeVerified;
     uint256 sellerCounter = 1;
-   
+
 
     struct Item {
         string itemName;
@@ -25,7 +39,7 @@ contract Decentralized_Market {
     Item[] items;
 
 
-   /****************** EVENTS ****************/
+   /**************************************** EVENTS ********************************************/
 
     event SellerAddressSubmitted(address indexed sellerAddress);
     event SellerVerified(address indexed sellerAddress, uint sellerID);
@@ -37,15 +51,15 @@ contract Decentralized_Market {
     event ItemPurchased(address indexed Buyer, string itemName, uint sellerID, uint itemPrice);
 
 
-    /****************** MAPPINGSS ****************/
+    /**************************************** MAPPINGSS *******************************************/
 
-    mapping(address sellerAddress => bool) sellers; // mapping to check if an address is a seller. Initialize: sellers(address/msg.sender)=true;
-    mapping(address seller => Item) itemOwner;
+    mapping(address sellerAddress => bool) sellers; // mapping to check if an address is a seller.
     mapping(string itemName => Item[]) findItem;
-    mapping(uint sellerId => mapping (string itemName => Item)) public sellersItem; // Used by buyers to confirm Items by seller. Calla ble by Users. Can be used to find item price or qty left.
+    mapping(uint sellerId => mapping (string itemName => Item)) public sellersItem; // Used by buyers to confirm Items by seller. 
     mapping (address sellerAddress => uint sellerID) public hasSellerID;
     mapping(address marketAuthority => bool) public marketAuthorities;
     mapping(address => uint256) sellersBalances;
+    mapping(address seller => Item) itemOwner;
 
 
 
@@ -60,12 +74,12 @@ contract Decentralized_Market {
 
    
     modifier onlyMarketAuthority {
-        require(marketAuthorities[msg.sender], "You must be a market authority to call this.");
+        if(!marketAuthorities[msg.sender]){revert Not_Market_Authority();}
         _;
     }
 
     modifier onlySeller {
-        require(hasSellerID[msg.sender] != 0, "Only verified sellers allowed to call this");
+        if(hasSellerID[msg.sender] == 0){revert Not_Seller();}
         _;
     }
 
@@ -75,7 +89,7 @@ contract Decentralized_Market {
 
     function transferMarketAuthority(address _newMarketAuthorityAddress) public onlyMarketAuthority {
         marketAuthority = _newMarketAuthorityAddress;
-       marketAuthorities[_newMarketAuthorityAddress] = true;
+        marketAuthorities[_newMarketAuthorityAddress] = true;
         emit MarketAuthorityTransferred(msg.sender, _newMarketAuthorityAddress);
         // Delete the authority at the found index
         delete marketAuthorities[msg.sender];
@@ -118,8 +132,8 @@ contract Decentralized_Market {
         uint itemPriceInETH = itemPrice * 1e18; // Converts seller's itemPrice to ETH. Buyers sets denomination to ETH. Doesn't collect 0.xxxx.
         
         Item memory item = Item(itemName, itemPriceInETH, itemDescription, itemQuantity, sellerID, payable(msg.sender));
-        require(bytes(sellersItem[sellerID][itemName].itemName).length == 0 , "Item name already exists.");
-        require(hasSellerID[msg.sender] == sellerID, "Seller ID doesn't match.");
+        if(bytes(sellersItem[sellerID][itemName].itemName).length != 0){revert Item_Already_Exist();}
+        if(hasSellerID[msg.sender] != sellerID){revert Invalid_SellerID();}
         items.push(item);
         itemOwner[payable(msg.sender)] = item;
         // findItem[itemName] = items;
@@ -158,8 +172,9 @@ contract Decentralized_Market {
     }
 
     function deleteItem(uint sellerID, string memory itemName) public onlySeller {
-        require(sellersItem[sellerID][itemName].sellerAddress != address(0), "Item not found."); // Check for valid owner
-        require(hasSellerID[msg.sender] == sellerID, "Seller ID doesn't match.");
+        if(hasSellerID[msg.sender] != sellerID){revert Invalid_SellerID();}
+        if(sellersItem[sellerID][itemName].sellerAddress == address(0)){revert Invalid_Item();} // Check for valid owner
+        
 
          // Find the index of the item
         uint256 indexToDelete = findItemIndex(sellerID, itemName);
@@ -190,7 +205,7 @@ contract Decentralized_Market {
 
     // Function for wannabe sellers to submit their addresses
     function submitSellerAddress() public {
-        require(!sellers[msg.sender], "Address already submitted");
+        if(sellers[msg.sender]){revert Seller_Address_Already_Submitted();}
         sellers[msg.sender] = true;
         sellersToBeVerified.push(msg.sender);
         emit SellerAddressSubmitted(msg.sender);
@@ -203,8 +218,8 @@ contract Decentralized_Market {
 
     // Function for marketAuthorities to verify addresses and assign sellerIDs
     function verifySellerAddress(address payable sellerAddress) public onlyMarketAuthority {
-        require(sellers[sellerAddress], "Address not submitted");
-        require(hasSellerID[sellerAddress] == 0, "Seller already has an ID");
+        if(!sellers[sellerAddress]){revert Seller_Address_Not_Submitted();}
+        if(hasSellerID[sellerAddress] != 0){revert Seller_Has_ID();}
         uint sellerID = sellerCounter++;
         sellers[msg.sender] = false;
         hasSellerID[sellerAddress] = sellerID;
@@ -233,14 +248,14 @@ contract Decentralized_Market {
     function buyItem(string memory itemName, uint sellerID) public payable {
         
         // 1. Validate item existence and seller:
-        require(sellersItem[sellerID][itemName].sellerAddress != address(0), "Item not found or invalid seller.");
 
+        if(sellersItem[sellerID][itemName].sellerAddress == address(0)){revert Invalid_Item();}
        // 2. Ensure sufficient funds from buyer:
         uint requiredAmount = sellersItem[sellerID][itemName].itemPrice;
-        require(msg.value >= requiredAmount, "Please send enough amount required to purchase the item. Search sellersItem with item name and seller ID to verify price.");
+        if(msg.value < requiredAmount){revert Insufficient_Amount();}
 
         // 3. Check item availability:
-        require(sellersItem[sellerID][itemName].itemQuantity > 0, "Item out of stock.");
+        if(sellersItem[sellerID][itemName].itemQuantity == 0){revert Out_Of_Stock();}
 
         // 4. Update seller's balance:
         sellersBalances[sellersItem[sellerID][itemName].sellerAddress] += sellersItem[sellerID][itemName].itemPrice;
@@ -270,7 +285,7 @@ contract Decentralized_Market {
 
     function withdrawBalance() public payable onlySeller {
         uint256 balance = sellersBalances[msg.sender];
-        require(balance > 0, "No balance to withdraw");
+        if(balance <= 0){revert No_balance_to_withdraw();}
 
         // Transfer funds to seller
         (bool success, ) = msg.sender.call{value: balance}("");
