@@ -56,7 +56,7 @@ contract Decentralized_Market {
     mapping(address sellerAddress => bool) sellers; // mapping to check if an address is a seller.
     mapping(string itemName => Item[]) findItem;
     mapping(uint sellerId => mapping (string itemName => Item)) public sellersItem; // Used by buyers to confirm Items by seller. 
-    mapping (address sellerAddress => uint sellerID) public hasSellerID;
+    mapping(address sellerAddress => uint sellerID) public hasSellerID;
     mapping(address marketAuthority => bool) public marketAuthorities;
     mapping(address => uint256) sellersBalances;
     mapping(address seller => Item) itemOwner;
