@@ -1,7 +1,6 @@
 #Compiler files
 cache/
 out/
-node_modules/
 
 #Dotenv file
 .env
@@ -9,6 +8,4 @@ node_modules/
 broadcast/
 lib/
 
-package-lock.json
-package.json
 
