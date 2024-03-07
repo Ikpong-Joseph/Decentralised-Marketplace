@@ -5,7 +5,9 @@ out/
 #Dotenv file
 .env
 
+broadcast/DeployRise_In_Decentralized_Market.s.sol
 broadcast/
 lib/
+lib/forge-std
 
 
